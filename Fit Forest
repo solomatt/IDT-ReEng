@@ -1,0 +1,100 @@
+
+import sklearn
+import numpy as np
+import pandas as pd
+from sklearn.datasets import load_breast_cancer
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+
+#BROKEN:
+#data is your dataset (file) - how will the modeling data look when it is received?
+#target_column is the column to predict (string)
+
+#IN USE:
+#_prt: train, test, and holdout partition sizes - entire as a decimal
+#default_n_trees is the number of trees in the forest you want as a default - format integer
+#k_folds specifies number of folds in a stratified cross validation as part of the optimization of the forest - format integer
+#_list parameters: enter a list of parameters for the RandomizedSearchCV - format [1,2,etc]
+
+
+#need to re-add dataset and target class as a parameter - need help setting this up
+def create_opt_forest(tr_prt,te,prt,hd_prt, default_n_trees, n_trees_list, max_depth_list, min_samples_split_list, min_samples_leaf_list, k_folds):
+
+  #temporarily using the breast cancer dataset 
+  data = load_breast_cancer()
+  label_names = data['target_names']
+  labels = data['target']
+  feature_names = data['feature_names']
+  features = data['data']
+
+
+
+  #ratio of partitions
+  train_ratio = tr_prt
+  validation_ratio = te_prt
+  test_ratio = hd_prt
+
+  #create train partition
+  x_train, x_test, y_train, y_test = train_test_split(features, labels, test_size=1 - train_ratio)
+
+  #create test and holdout partitions
+  x_test, x_holdout, y_test, y_holdout = train_test_split(x_test, y_test, test_size=test_ratio/(test_ratio + validation_ratio)) 
+  #train: x_train, y_train
+  #test: x_test, y_test
+  #holdout: x_holdout,y_holdout
+
+  ##impute missing values - strategies are mean, median, mode, or some constant (RRP coalesces nulls to 0)
+  impute_nulls = SimpleImputer(missing_values=None, strategy='constant', fill_value = 0) #how will nulls look in the live dataset?
+  sets = [x_train,x_test,x_holdout] #assuming response will not have nulls
+  for set in sets:
+    set = impute_nulls.fit_transform(set)
+
+  #training the classifier
+  baseRF = RandomForestClassifier(n_estimators = 30)
+  print("_______________________________________________________________")
+  print("The default RF Classifier has the following attributes:")
+  print("Number of trees in forest: " + str(baseRF.n_estimators))
+  print("Maximum depth of tree(s): " + str(baseRF.max_depth))
+  print("Minimm # samples to split node: " + str(baseRF.min_samples_split))
+  print("Minimum # samples to have a leaf node: " + str(baseRF.min_samples_leaf))
+  print("Fitting the model...")
+  #fit the RF classifier
+  baseRF.fit(x_train,y_train)
+  #predict the target on the holdout set
+  y_pred = baseRF.predict(x_holdout)
+  print("The accuracy of the default RF on the holdout set is " + str(accuracy_score(y_holdout,y_pred)))
+
+  print("________________________________________________________________")
+
+  print("Passing given parameters for RandomizedSearch optimization with " + str(k_folds) + " folds in the cross validation...")
+  params_tune = dict(n_estimators = n_trees_list, max_depth = max_depth_list,  
+                min_samples_split = min_samples_split_list, 
+                min_samples_leaf = min_samples_leaf_list)
+
+  #tune the random forest
+  tune = RandomizedSearchCV(baseRF, params_tune, cv = k_folds, verbose = 1, 
+                      n_jobs = -1)
+  
+  optFit = tune.fit(x_train,y_train)
+
+  #create the optimized RF opject
+  optRF = optFit.best_estimator_
+  #predict on holdout with optimized RF model
+  y_pred_opt = optRF.predict(x_holdout)
+  print("_______________________________________________________________")
+  print("The optimal hyperparameters for the RF on this dataset are the following:")
+  print("The default RF Classifier has the following attributes:")
+  print("Number of trees in forest: " + str(optRF.n_estimators))
+  print("Maximum depth of tree(s): " + str(optRF.max_depth))
+  print("Minimm # samples to split node: " + str(optRF.min_samples_split))
+  print("Minimum # samples to have a leaf node: " + str(optRF.min_samples_leaf))
+  print("Results:")
+  print("The accuracy of the optimized RF on the holdout set is " + str(accuracy_score(y_holdout,y_pred_opt)))
+  print("_______________________________________________________________")
+
+  
+
+
